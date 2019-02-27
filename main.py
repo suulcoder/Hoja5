@@ -11,7 +11,7 @@ import simpy
 import math
 
 datos = []
-class computador(object):
+class computador(object):#Clase computador
 
     def __init__(self, env, procesadores, memoria):
         # Ejecutar:Cantidad de procesos a realizar por intento en el cpu
@@ -20,24 +20,32 @@ class computador(object):
         # Tiempo de creacion
         self.env = env
         self.cpu = simpy.Resource(env, capacity=procesadores)
-        self.ram = simpy.Container(env, init=0, capacity=memoria)
+        self.ram = simpy.Container(env, memoria,init=0)
+        self.procesadores = procesadores
 
+    def add(self, ram, intervalo):
+        yield env.timeout((1/(self.ram.capacity+(intervalo*100)))*100)
+        if(self.ram.capacity-self.ram.level<ram):
+            self.ram.put(ram)
 
-class Proceso(object):
+class Proceso(object):#Clase proceso
 
     def __init__(self, env, procesos, ejecutar, memoria, computador, nombre, inicial):
         self.env = env
         self.action = env.process(self.run(env, ejecutar, memoria, computador, nombre, inicial))
         self.procesos = procesos
 
+
     def run(self, env, ejecutar, memoria, computador, nombre, inicial):
+        yield env.timeout(1.0/computador.procesadores)
         with computador.cpu.request() as process:  # Utiliza el CPU
             contador = 3
             while True:
                 try:
                     contador = contador - 1
                     self.procesos = self.procesos - 1
-                    yield self.env.timeout(1)
+                    yield self.env.timeout(3/ejecutar)
+                    yield process
                 except simpy.Interrupt:
                     if (self.procesos < 0):  # Si ya no existe mas instrucciones
                         env.process(terminar(env, memoria, computador, nombre, inicial))  # Termina
@@ -56,13 +64,9 @@ def new(env, instrucciones, intervalo, cantidad, computador, inicio):
         memoria_RAM = random.randint(1, 10)#Generamos la memoria ram que consume el proceso
         instructions = random.randint(1, 10)#Generamos las instrucciones que consume el proceso
         inicial = env.now
-        if (computador.ram.level<computador.ram.capacity):
-            yield env.timeout(1)
-            yield computador.ram.put(memoria_RAM)
-            yield env.process(ready(env, instructions, instrucciones, memoria_RAM, computador, 'Proceso %d' % i, inicial))
-        else:
-            yield env.timeout(1)
-            yield env.process(new(env,instructions,intervalo,cantidad,computador,i))
+        yield env.process(computador.add(memoria_RAM,intervalo))
+        print(computador.ram.level)
+        yield env.process(ready(env, instructions, instrucciones, memoria_RAM, computador, 'Proceso %d' % i, inicial))
 
 
 def ready(env, procesos, ejecutar, memoria, computador, nombre, inicial):
@@ -84,17 +88,17 @@ def terminar(env,memoria,computador,nombre, inicial):
     datos.append(env.now-inicial)  # Almacenamos la informacion para realizar pruebas estadisticas
     yield computador.ram.get(memoria)
 
-
 #-----------------------------------------------------------------------
 #Definimos los valores predeterminados
 procesadores = 2#Numero de  procesadores en la computadora
-memoria = 100#Cantidad de memoria RAM de la computadora
+memoria = 200#Cantidad de memoria RAM de la computadora
 instrucciones = 3#Cantidad de instrucciones por proceso
-intervalo = 1#Intervalo de aparicion de procesos
-cantidad = 50#Cantidad de procesos generados
+intervalo = 10#Intervalo de aparicion de procesos
+cantidad = 200#Cantidad de procesos generados
+
 
 env = simpy.Environment()
-random.seed(100)
+random.seed(9)
 computador = computador(env, procesadores, memoria)
 process_gen = env.process(new(env, instrucciones, intervalo, cantidad, computador,0))
 env.run(until=process_gen)
